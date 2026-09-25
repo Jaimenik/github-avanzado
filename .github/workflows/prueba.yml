@@ -1,0 +1,33 @@
+name: Prueba secrets vs variables locales
+
+# Se activa en cualquier push a cualquier rama
+on:
+  push:
+
+jobs:
+  comparar-tokens:
+    # Punto clave del ejercicio: corre en TU máquina, no en los runners de GitHub
+    runs-on: self-hosted
+
+    steps:
+      - name: Comparar DEV_TOKEN (secret) con LOCAL_DEV_TOKEN (variable local)
+        # El secret se inyecta como variable de entorno; NUNCA se imprime su valor
+        env:
+          SECRET_DEV_TOKEN: ${{ secrets.DEV_TOKEN }}
+        run: |
+          echo "Ejecutando en el runner: $(hostname)"
+
+          # 1) La variable local debe existir en el entorno del runner
+          if [ -z "$LOCAL_DEV_TOKEN" ]; then
+            echo "::error::LOCAL_DEV_TOKEN no está definida en el entorno del runner."
+            echo "Arranca el runner desde una terminal donde esa variable esté exportada."
+            exit 1
+          fi
+
+          # 2) Comparamos secret contra variable local SIN mostrar los valores
+          if [ "$SECRET_DEV_TOKEN" = "$LOCAL_DEV_TOKEN" ]; then
+            echo "✅ COINCIDEN: el secret DEV_TOKEN es igual a LOCAL_DEV_TOKEN"
+          else
+            echo "::error::❌ NO COINCIDEN: DEV_TOKEN (secret) ≠ LOCAL_DEV_TOKEN (local)"
+            exit 1
+          fi
