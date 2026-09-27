@@ -1,0 +1,58 @@
+name: CI (develop)
+
+# Reacciona a la actividad sobre la rama develop.
+# Se dispara igual al abrir el PR, al añadir commits y al mergear:
+# el workflow no distingue entre esos casos, solo reacciona al evento.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Job 1 — GitHub-hosted, va primero: actualiza el README
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout de la rama
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ github.token }}
+
+      - name: Añadir línea de la feature al README
+        run: |
+          RAMA="${{ github.head_ref || github.ref_name }}"
+          echo "Añadida feature: ${RAMA}" >> README.md
+
+      - name: Commit y push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "CI: añadir feature '${{ github.head_ref || github.ref_name }}' al README"
+          git push
+
+  # Job 2 — self-hosted, depende del anterior (needs).
+  # Si update-readme falla, este job ni se ejecuta.
+  validate-dev:
+    needs: update-readme
+    runs-on: self-hosted
+    steps:
+      - name: Validar DEV_TOKEN (secret) vs LOCAL_DEV_TOKEN (variable local)
+        env:
+          SECRET_DEV_TOKEN: ${{ secrets.DEV_TOKEN }}
+        run: |
+          if [ -z "$LOCAL_DEV_TOKEN" ]; then
+            echo "::error::LOCAL_DEV_TOKEN no está definida en el runner"; exit 1
+          fi
+          if [ "$SECRET_DEV_TOKEN" = "$LOCAL_DEV_TOKEN" ]; then
+            echo "OK: DEV_TOKEN coincide con LOCAL_DEV_TOKEN"
+          else
+            echo "::error::DEV_TOKEN != LOCAL_DEV_TOKEN"; exit 1
+          fi

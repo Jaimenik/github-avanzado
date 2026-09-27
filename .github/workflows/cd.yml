@@ -1,0 +1,60 @@
+name: CD (main)
+
+# Reacciona a la actividad sobre la rama main.
+# Mismos triggers que ci.yml: reacciona al evento, no al tipo de acción.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Job 1 — GitHub-hosted, va primero: sube la versión del README
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout de la rama
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ github.token }}
+
+      - name: Incrementar AppVersion en el README
+        run: |
+          # AppVersion-N -> AppVersion-(N+1) con fecha y hora
+          ACTUAL=$(grep -oE 'AppVersion-[0-9]+' README.md | head -1 | grep -oE '[0-9]+' || echo 0)
+          NUEVA=$((ACTUAL + 1))
+          FECHA=$(date '+%Y-%m-%d %H:%M:%S')
+          sed -i "s/AppVersion-${ACTUAL}.*/AppVersion-${NUEVA} (${FECHA})/" README.md
+          echo "Version: AppVersion-${ACTUAL} -> AppVersion-${NUEVA}"
+
+      - name: Commit y push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "CD: bump de versión en el README"
+          git push
+
+  # Job 2 — self-hosted, depende del anterior (needs).
+  validate-prod:
+    needs: bump-version
+    runs-on: self-hosted
+    steps:
+      - name: Validar PROD_TOKEN (secret) vs LOCAL_PROD_TOKEN (variable local)
+        env:
+          SECRET_PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
+        run: |
+          if [ -z "$LOCAL_PROD_TOKEN" ]; then
+            echo "::error::LOCAL_PROD_TOKEN no está definida en el runner"; exit 1
+          fi
+          if [ "$SECRET_PROD_TOKEN" = "$LOCAL_PROD_TOKEN" ]; then
+            echo "OK: PROD_TOKEN coincide con LOCAL_PROD_TOKEN"
+          else
+            echo "::error::PROD_TOKEN != LOCAL_PROD_TOKEN"; exit 1
+          fi
