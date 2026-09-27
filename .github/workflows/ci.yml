@@ -1,8 +1,7 @@
 name: CI (develop)
 
-# Reacciona a la actividad sobre la rama develop.
-# Se dispara igual al abrir el PR, al añadir commits y al mergear:
-# el workflow no distingue entre esos casos, solo reacciona al evento.
+# Reacciona a la actividad sobre la rama develop:
+# se dispara al abrir el PR, al añadir commits y al mergear.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -15,7 +14,9 @@ permissions:
   contents: write
 
 jobs:
-  # Job 1 — GitHub-hosted, va primero: actualiza el README
+  # Job 1 — GitHub-hosted, va primero: actualiza el README.
+  # En el PR añade la línea a la rama feature (no protegida); el GITHUB_TOKEN
+  # no re-dispara workflows, así que no hay bucles.
   update-readme:
     runs-on: ubuntu-latest
     steps:
@@ -26,16 +27,13 @@ jobs:
           token: ${{ github.token }}
 
       - name: Añadir línea de la feature al README
+        if: github.event_name == 'pull_request'
         run: |
-          RAMA="${{ github.head_ref || github.ref_name }}"
-          echo "Añadida feature: ${RAMA}" >> README.md
-
-      - name: Commit y push
-        run: |
+          echo "Añadida feature: ${{ github.head_ref }}" >> README.md
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
-          git diff --cached --quiet || git commit -m "CI: añadir feature '${{ github.head_ref || github.ref_name }}' al README"
+          git diff --cached --quiet || git commit -m "CI: añadir feature '${{ github.head_ref }}' al README"
           git push
 
   # Job 2 — self-hosted, depende del anterior (needs).

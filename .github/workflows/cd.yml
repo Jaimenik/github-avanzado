@@ -1,7 +1,6 @@
 name: CD (main)
 
 # Reacciona a la actividad sobre la rama main.
-# Mismos triggers que ci.yml: reacciona al evento, no al tipo de acción.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -14,17 +13,19 @@ permissions:
   contents: write
 
 jobs:
-  # Job 1 — GitHub-hosted, va primero: sube la versión del README
+  # Job 1 — GitHub-hosted, va primero: sube la versión del README en main
+  # tras el merge. El GITHUB_TOKEN no re-dispara workflows (sin bucles).
   bump-version:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout de la rama
+      - name: Checkout de main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: main
           token: ${{ github.token }}
 
       - name: Incrementar AppVersion en el README
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           # AppVersion-N -> AppVersion-(N+1) con fecha y hora
           ACTUAL=$(grep -oE 'AppVersion-[0-9]+' README.md | head -1 | grep -oE '[0-9]+' || echo 0)
@@ -32,13 +33,10 @@ jobs:
           FECHA=$(date '+%Y-%m-%d %H:%M:%S')
           sed -i "s/AppVersion-${ACTUAL}.*/AppVersion-${NUEVA} (${FECHA})/" README.md
           echo "Version: AppVersion-${ACTUAL} -> AppVersion-${NUEVA}"
-
-      - name: Commit y push
-        run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
-          git diff --cached --quiet || git commit -m "CD: bump de versión en el README"
+          git diff --cached --quiet || git commit -m "CD: bump a AppVersion-${NUEVA}"
           git push
 
   # Job 2 — self-hosted, depende del anterior (needs).
